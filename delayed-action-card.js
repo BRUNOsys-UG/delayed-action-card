@@ -44,6 +44,109 @@ function isNestedDuplicate(node, entity, type, candidates) {
   }
   return false;
 }
+// Public adapter contract, version 1.
+const adapters = new Map();
+const adapterEvents = new EventTarget();
+let adapterOrder = 0;
+function registerAdapter(adapter) {
+  if (!adapter || typeof adapter.id !== "string" || !adapter.id.trim() ||
+      typeof adapter.selector !== "string" || !adapter.selector.trim() ||
+      typeof adapter.resolve !== "function" ||
+      (adapter.priority !== undefined && !Number.isFinite(adapter.priority))) {
+    throw new TypeError("Invalid Delayed Action adapter");
+  }
+  if (typeof document !== "undefined") document.createElement("div").matches(adapter.selector);
+  if (adapters.has(adapter.id)) throw new Error("Adapter already registered: " + adapter.id);
+  const entry = { ...adapter, priority: adapter.priority ?? 0, order: adapterOrder++ };
+  adapters.set(entry.id, entry);
+  adapterEvents.dispatchEvent(new Event("change"));
+  return () => {
+    if (adapters.get(entry.id) === entry) {
+      adapters.delete(entry.id);
+      adapterEvents.dispatchEvent(new Event("change"));
+    }
+  };
+}
+function listAdapters() {
+  return [...adapters.values()].sort((a,b)=>b.priority-a.priority || a.order-b.order)
+    .map(({id,selector,priority})=>({id,selector,priority}));
+}
+function resolveTargets(node, hass) {
+  const ordered = [...adapters.values()].sort((a,b)=>b.priority-a.priority || a.order-b.order);
+  for (const adapter of ordered) {
+    try {
+      if (!node.matches(adapter.selector)) continue;
+      const result = adapter.resolve(node, {hass, resolveEntity});
+      if (!Array.isArray(result)) throw new TypeError("resolve must return an array");
+      const targets = [];
+      for (const item of result) {
+        if (!item || typeof item.entityId !== "string" || !/^[a-z0-9_]+\.[a-z0-9_]+$/.test(item.entityId)) continue;
+        const anchor = item.anchor ?? node;
+        if (typeof anchor.getBoundingClientRect !== "function" || !anchor.isConnected) continue;
+        const type = item.kind ?? kind(node) ?? "card";
+        const placement = item.placement ?? (type === "badge" ? "bottom" : "right");
+        if (!["card","row","badge"].includes(type) || !["right","left","top","bottom"].includes(placement)) continue;
+        if (targets.some(t=>t.anchor===anchor && t.entity===item.entityId && t.placement===placement)) continue;
+        targets.push({host:node,anchor,entity:item.entityId,type,placement,offset:Number.isFinite(item.offset)?item.offset:0,adapterId:adapter.id});
+      }
+      if (targets.length) return targets;
+    } catch (error) {
+      // A third-party adapter must never prevent the rest of the dashboard from working.
+      if (!adapter.warned) { adapter.warned=true; console.warn("Delayed Action adapter failed:",adapter.id,error); }
+    }
+  }
+  return [];
+}
+function singleTarget(node, type) {
+  const entityId=resolveEntity(node);
+  return entityId ? [{entityId,anchor:node,kind:type,placement:type==="badge"?"bottom":"right",offset:-2}] : [];
+}
+const builtins = [
+  {id:"native",selector:"hui-tile-card,hui-button-card,hui-entity-card,hui-entity-button-card,hui-light-card,hui-cover-card,hui-thermostat-card,hui-media-control-card",priority:100,resolve:node=>singleTarget(node,"card")},
+  {id:"mushroom",selector:"[class],*",priority:100,resolve:node=>node.localName.startsWith("mushroom-") && node.localName.endsWith("-card") && kind(node)==="card"?singleTarget(node,"card"):[]},
+  {id:"bubble",selector:"bubble-card",priority:100,resolve:node=>singleTarget(node,"card")},
+  {id:"button-card",selector:"button-card",priority:100,resolve:node=>singleTarget(node,"card")},
+  {id:"better-thermostat",selector:"better-thermostat-ui-card",priority:100,resolve:node=>singleTarget(node,"card")},
+  {id:"entity-row",selector:"*",priority:100,resolve:node=>kind(node)==="row"?singleTarget(node,"row"):[]},
+  {id:"badge",selector:"*",priority:100,resolve:node=>kind(node)==="badge"?singleTarget(node,"badge"):[]},
+  {id:"generic",selector:"*",priority:-1000,resolve:node=>{
+    if (!node.localName.includes("-") || /^(ha-|mwc-|md-|paper-|iron-)/.test(node.localName)) return [];
+    if (/stack-card$|grid-card$|entities-card$|conditional-card$/.test(node.localName)) return [];
+    const type=kind(node) || (node.localName.endsWith("-card")?"card":null);
+    return type?singleTarget(node,type):[];
+  }}
+];
+for (const adapter of builtins) registerAdapter(adapter);
+const publicAPI = Object.freeze({apiVersion:1,registerAdapter,listAdapters});
+if (typeof window !== "undefined") {
+  window.DelayedAction = publicAPI;
+  const pending = window.DelayedActionAdapters;
+  window.DelayedActionAdapters = [];
+  if (Array.isArray(pending)) for (const adapter of pending) {
+    try { registerAdapter(adapter); } catch (error) { console.warn("Delayed Action adapter registration failed",error); }
+  }
+  window.dispatchEvent?.(new Event("delayed-action-ready"));
+}
+function duplicateTarget(target, candidates) {
+  for (let parent=parentAcross(target.host);parent;parent=parentAcross(parent)) {
+    if (candidates.some(other=>other.host===parent && other.entity===target.entity && other.type===target.type)) return true;
+  }
+  return false;
+}
+function sameTarget(a,b) {
+  return a.host===b.host && a.anchor===b.anchor && a.entity===b.entity &&
+    a.type===b.type && a.placement===b.placement && a.offset===b.offset && a.adapterId===b.adapterId;
+}
+function anchorPosition(rect, placement, offset=0) {
+  const x=rect.left+rect.width/2, y=rect.top+rect.height/2;
+  switch(placement) {
+    case "left": return {x:rect.left-offset,y};
+    case "top": return {x,y:rect.top-offset};
+    case "bottom": return {x,y:rect.bottom+offset};
+    default: return {x:rect.right+offset,y};
+  }
+}
+
 function actionsFor(hass, entity) {
   const domain = entityDomain(entity);
   const available = hass.services?.[domain];
@@ -190,13 +293,14 @@ const indicatorCSS = `
 `;
 class CardDiscovery {
   constructor() {
-    this.root=null; this.records=new Map(); this.observed=new Set(); this.visible=new Map();
+    this.root=null; this.records=new Set(); this.observed=new Set(); this.visible=new Map(); this.anchors=new Map();
     this.scanFrame=0; this.layoutFrame=0; this.layer=null;
     this.mutations=new MutationObserver(()=>this.scheduleScan());
     this.resize=new ResizeObserver(()=>this.scheduleLayout());
     this.intersection=new IntersectionObserver(entries=>{for(const entry of entries)this.visible.set(entry.target,entry.isIntersecting);this.scheduleLayout();});
     this.onChange=()=>this.scheduleScan();
     store.addEventListener("change",this.onChange);
+    adapterEvents.addEventListener("change",this.onChange);
     window.addEventListener("resize",()=>this.scheduleLayout(),{passive:true});
     window.addEventListener("scroll",()=>this.scheduleLayout(),{passive:true,capture:true});
     this.tick=setInterval(()=>{this.scheduleScan();this.updateIndicators();},2000);
@@ -204,7 +308,7 @@ class CardDiscovery {
   setRoot(root) {
     if(this.root===root)return;
     this.root=root; this.mutations.disconnect(); this.observed.clear();
-    for(const node of this.records.keys())this.remove(node);
+    for(const record of [...this.records])this.remove(record);
     this.scheduleScan();
   }
   scheduleScan(){if(!this.scanFrame)this.scanFrame=requestAnimationFrame(()=>{this.scanFrame=0;this.scan();});}
@@ -218,12 +322,13 @@ class CardDiscovery {
   scan(){
     if(!this.root?.isConnected)return;
     this.ensureLayer();
-    const candidates=new Map();const roots=new Set();
+    const candidates=[];const roots=new Set();
     const walk=node=>{
       if(node===this.layer || node.localName==="delayed-action-card")return;
       if(node.nodeType===1){
-        const type=kind(node);const entity=type?resolveEntity(node):null;
-        if(entity && store.hass?.states?.[entity] && store.domains.includes(entityDomain(entity)) && actionsFor(store.hass,entity).length)candidates.set(node,{entity,type});
+        if(node.localName.includes("-")) for(const target of resolveTargets(node,store.hass)){
+          if(store.hass?.states?.[target.entity] && store.domains.includes(entityDomain(target.entity)) && actionsFor(store.hass,target.entity).length)candidates.push(target);
+        }
       }
       if(node.shadowRoot){roots.add(node.shadowRoot);walk(node.shadowRoot);}
       for(const child of node.children || [])walk(child);
@@ -233,17 +338,20 @@ class CardDiscovery {
     for(const root of roots)if(!this.observed.has(root)){
       this.mutations.observe(root,{childList:true,subtree:true});this.observed.add(root);
     }
-    for(const [node,record] of this.records){
-      const candidate=candidates.get(node);
-      if(!candidate || candidate.entity!==record.entity || isNestedDuplicate(node,candidate.entity,candidate.type,candidates))this.remove(node);
+    const targets=candidates.filter(target=>!duplicateTarget(target,candidates));
+    for(const record of [...this.records]){
+      if(!targets.some(target=>sameTarget(record,target)))this.remove(record);
     }
-    for(const [node,candidate] of candidates){
-      if(this.records.has(node)||isNestedDuplicate(node,candidate.entity,candidate.type,candidates))continue;
-      const button=el("button",null,{type:"button","data-kind":candidate.type});
+    for(const target of targets){
+      if([...this.records].some(record=>sameTarget(record,target)))continue;
+      const button=el("button",null,{type:"button","data-kind":target.type});
       button.append(el("span"));button.hidden=true;
-      button.addEventListener("click",event=>{event.preventDefault();event.stopPropagation();openDialog(candidate.entity);});
-      this.layer.shadowRoot.append(button);this.records.set(node,{...candidate,button});
-      this.resize.observe(node);this.intersection.observe(node);
+      button.addEventListener("click",event=>{event.preventDefault();event.stopPropagation();openDialog(target.entity);});
+      this.layer.shadowRoot.append(button);
+      const record={...target,button};this.records.add(record);
+      const count=this.anchors.get(target.anchor)||0;
+      if(!count){this.resize.observe(target.anchor);this.intersection.observe(target.anchor);}
+      this.anchors.set(target.anchor,count+1);
     }
     this.updateIndicators();this.scheduleLayout();
   }
@@ -254,16 +362,25 @@ class CardDiscovery {
       button.title=text;button.setAttribute("aria-label",text);
     }
   }
-  remove(node){
-    this.records.get(node)?.button.remove();this.records.delete(node);
-    this.resize.unobserve(node);this.intersection.unobserve(node);this.visible.delete(node);
+  remove(record){
+    record.button.remove();this.records.delete(record);
+    const anchor=record.anchor,count=this.anchors.get(anchor)||1;
+    if(count===1){this.resize.unobserve(anchor);this.intersection.unobserve(anchor);this.visible.delete(anchor);this.anchors.delete(anchor);}
+    else this.anchors.set(anchor,count-1);
   }
   layout(){
-    for(const [node,{button,type}] of this.records){
-      const r=node.getBoundingClientRect();
-      const x=type==="badge"?r.left+r.width/2:r.right-2;
-      const y=type==="badge"?r.bottom-2:r.top+r.height/2;
-      const show=node.isConnected && this.visible.get(node)!==false && r.width>0 && r.height>0 && x>=0 && y>=0 && x<=window.innerWidth && y<=window.innerHeight;
+    const occupied=new Map();
+    for(const {anchor,button,type,placement,offset} of this.records){
+      const r=anchor.getBoundingClientRect();
+      let {x,y}=anchorPosition(r,placement,offset);
+      // Multiple entities on the same anchor get separate buttons.
+      const key=placement+"|"+offset;
+      let slots=occupied.get(anchor);
+      if(!slots){slots=new Map();occupied.set(anchor,slots);}
+      const index=slots.get(key)||0;slots.set(key,index+1);
+      if(placement==="left"||placement==="right")y+=index*(type==="badge"?16:24);
+      else x+=index*(type==="badge"?16:24);
+      const show=anchor.isConnected && this.visible.get(anchor)!==false && r.width>0 && r.height>0 && x>=0 && y>=0 && x<=window.innerWidth && y<=window.innerHeight;
       button.hidden=!show;
       if(show){button.style.left=x+"px";button.style.top=y+"px";}
     }

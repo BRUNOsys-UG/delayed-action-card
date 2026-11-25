@@ -86,3 +86,7 @@ MIT © [Benedikt Hübschen][bhuebschen]
 ## Development branch: HA compatibility
 
 The global extension discovers native cards, Mushroom cards, entity rows and badges and positions a separate indicator without modifying card internals. A shared task store consumes the existing delayed_action events. The standalone task list remains available. The selector library is integrated in the production bundle: run `npm install`, `npm test`, `npm run build`. The checked-in browser entry also works using the built-in view discovery fallback; CI uploads the bundle containing the library. Actual card compatibility depends on exposed entity configuration and open shadow roots. The backend branch `refactor/persistent-scheduler` uses the same services and event schema.
+
+## Custom card libraries
+
+Use the [public adapter API](docs/adapters.md) to add support for other card libraries without changing Delayed Action itself. Built-in adapters and generic discovery are registered through the same API.
