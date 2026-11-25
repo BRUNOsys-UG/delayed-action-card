@@ -1,1013 +1,338 @@
-const enabledCards = [
-  "better-thermostat-ui-card",
-  "hui-button-card",
-  "hui-entities-card",
-  "hui-entity-button-card",
-  "hui-entity-card",
-  "hui-glance-card",
-  "hui-horizontal-stack-card",
-  "hui-light-card",
-  "hui-media-control-card",
-  "hui-picture-elements",
-  "hui-picture-glance-card",
-  "hui-thermostat-card",
-  "hui-vertical-stack-card",
-  "mushroom-light-card",
-  "mushroom-entity-card",
-  "hui-tile-card",
-  "mushroom-fan-card",
-  "mushroom-thermostat-card",
-  "mushroom-lock-card",
-  "mushroom-vacuum-card",
-  "mushroom-select-card",
-  "bubble-card",
-  "mushroom-template-badge",
-  "hui-entity-badge",
-  "mushroom-cover-card"
-];
-
-async function fetchTasks(hass) {
-  try {
-    const response = await hass.callWS({
-      type: "call_service",
-      domain: "delayed_action",
-      service: "list",
-    });
-  } catch (error) {
-    console.error("Error fetching tasks:", error);
-  }
-}
-
-function deepQuerySelectorAll(selector, rootNode = document.body) {
-  const nodes = [];
-  const traverse = (node) => {
-    if (node.nodeType !== Node.ELEMENT_NODE) return;
-    if (node.matches(selector)) nodes.push(node);
-    [...node.children].forEach(traverse);
-    if (node.shadowRoot) [...node.shadowRoot.children].forEach(traverse);
-  };
-  traverse(rootNode);
-  return nodes;
-}
-
-function extendCard(element, hass, config, tasks, entityId) {
-  if (element.querySelector(".cornerButton")) {
-    const innerDiv = element.querySelector(".cornerButton div");
-    // Überprüfen, ob die Entität in den Tasks enthalten ist und das innerDiv entsprechend einfärben
-    if (
-      tasks &&
-      Object.values(tasks).length > 0 &&
-      element.__config.entity === entityId
-    ) {
-      innerDiv.style.backgroundColor = "var(--accent-color)"; // Task existiert
-      innerDiv.className = "blink";
-    } else {
-      innerDiv.style.backgroundColor = "var(--disabled-text-color)"; // Kein Task
-      innerDiv.className = "";
-    }
-    return; // Button already added
-  }
-  cardElements(element, hass, config);
-}
-
-function extendMushroomCard(element, hass, config, tasks, entityId) {
-  const container = element.shadowRoot
-    .querySelector("ha-card mushroom-card mushroom-state-item")
-    .shadowRoot.querySelector(".container");
-
-  if (container.querySelector(".cornerButton")) {
-    const innerDiv = container.querySelector(".cornerButton div");
-    if (
-      tasks &&
-      Object.values(tasks).length > 0 &&
-      element.___config.entity === entityId
-    ) {
-      innerDiv.style.backgroundColor = "var(--accent-color)";
-      innerDiv.className = "blink";
-    } else {
-      innerDiv.style.backgroundColor = "var(--disabled-text-color)";
-      innerDiv.className = "";
-    }
-    return;
-  }
-  cardElements(container, hass, config, '-6px');
-}
-
-function extendButtonCard(element, hass, config, tasks, entityId) {
-  const container = element.shadowRoot.querySelector("ha-card"); // ha-ripple");
-  if (container.querySelector(".cornerButton")) {
-    const innerDiv = container.querySelector(".cornerButton div");
-    if (
-      tasks &&
-      Object.values(tasks).length > 0 &&
-      element.___config.entity === entityId
-    ) {
-      innerDiv.style.backgroundColor = "var(--accent-color)";
-      innerDiv.className = "blink";
-    } else {
-      innerDiv.style.backgroundColor = "var(--disabled-text-color)";
-      innerDiv.className = "";
-    }
-    return;
-  }
-  cardElements(container, hass, config, "-6px");
-}
-
-function extendTileCard(element, hass, config, tasks, entityId) {
-  const haCard = element.shadowRoot.querySelector("ha-card");
-  let container;
-  let resizedButton = false;
-  if (element.parentElement.parentElement.style.cssText.indexOf("column-size") > -1) {
-    container = haCard;
-    resizedButton = true;
-  } else {
-    container = haCard.querySelector(".content");
-  }
-  if (container.querySelector(".cornerButton")) {
-    const innerDiv = container.querySelector(".cornerButton div");
-    if(resizedButton) {
-      innerDiv.parentElement.style.top = "50%";
-      innerDiv.parentElement.style.marginTop = "-11px";
-    }
-    if (
-      tasks &&
-      Object.values(tasks).length > 0 &&
-      element.___config.entity === entityId
-    ) {
-      innerDiv.style.backgroundColor = "var(--accent-color)";
-      innerDiv.className = "blink";
-    } else {
-      innerDiv.style.backgroundColor = "var(--disabled-text-color)";
-      innerDiv.className = "";
-    }
-    return;
-  }
-  cardElements(container, hass, config, "-6px");
-}
-
-function extendBadge(element, hass, config, tasks, entityId) {
-  const container = element;
-  if (container.querySelector(".cornerButton")) {
-    const innerDiv = container.querySelector(".cornerButton div");
-    if (
-      tasks &&
-      Object.values(tasks).length > 0 &&
-      config.entity === entityId
-    ) {
-      innerDiv.style.backgroundColor = "var(--accent-color)";
-      innerDiv.className = "blink";
-    } else {
-      innerDiv.style.backgroundColor = "var(--disabled-text-color)";
-      innerDiv.className = "";
-    }
-    return;
-  }
-  cardElementsBottom(container, hass, config, "-6px");
-}
-
-function cardElementsBottom(element, hass, config, offset, additionalClass) {
-  cardElements(element, hass, config, offset, additionalClass);
-  const cornerButton = element.querySelector(".cornerButton");
-  cornerButton.style.right = null;
-  cornerButton.style.bottom = "-5px";
-  cornerButton.style.width = "12px";
-  cornerButton.style.height = "12px";
-  cornerButton.style.borderRight = null
-  cornerButton.style.borderBottom =
-  "solid 1px var(--ha-card-border-color, var(--divider-color, #e0e0e0))";
-
-  const cornerButtonIndicator = cornerButton.querySelector(".cornerButtonIndicator");
-  cornerButtonIndicator.style.width = "6px";
-  cornerButtonIndicator.style.height = "6px";
-  cornerButtonIndicator.style.top = "3px";
-  cornerButtonIndicator.style.left = "3px";
-}
-
-function cardElements(element, hass, config, offset, additionalClass) {
-  const cornerButton = document.createElement("div");
-  cornerButton.className = "cornerButton" + (additionalClass ? " " + additionalClass : "");
-  cornerButton.style.position = "absolute";
-  cornerButton.style.right =
-    offset !== undefined && offset !== "" && offset.length > 0
-      ? offset
-      : element.className.indexOf("container") > -1
-      ? "-30px"
-      : "-22px";
-  cornerButton.style.width = "22px";
-  cornerButton.style.height = "22px";
-  cornerButton.style.backgroundColor =
-    "var(--ha-card-background, var(--card-background-color, #fff))";
-  cornerButton.style.borderRadius = "12px";
-  cornerButton.style.borderRight =
-    "solid 1px var(--ha-card-border-color, var(--divider-color, #e0e0e0))";
-  cornerButton.style.zIndex = "1";
-
-  const innerDiv = document.createElement("div");
-  innerDiv.className = "cornerButtonIndicator";
-  innerDiv.style.borderRadius = "20px";
-  innerDiv.style.width = "11px";
-  innerDiv.style.height = "11px";
-  innerDiv.style.top = "6px";
-  innerDiv.style.left = "6px";
-  innerDiv.style.position = "relative";
-  innerDiv.style.backgroundColor = "var(--disabled-text-color)";
-  cornerButton.appendChild(innerDiv);
-
-  const timerDialog = document.createElement("div");
-  timerDialog.style.display = "none";
-  timerDialog.style.position = "absolute";
-  timerDialog.style.top = "34px";
-  timerDialog.style.right = "-28px";
-  timerDialog.style.backgroundColor = "white";
-  timerDialog.style.padding = "10px";
-  timerDialog.style.boxShadow = "0px 0px 10px rgba(0, 0, 0, 0.1)";
-  timerDialog.style.zIndex = "1";
-
-  const secondsInput = document.createElement("input");
-  secondsInput.type = "number";
-  secondsInput.placeholder = "Seconds";
-
-  const cancelButton = document.createElement("button");
-  cancelButton.innerText = "Cancel";
-  cancelButton.addEventListener("click", (e) => {
-    e.stopPropagation();
-    e.preventDefault();
-    timerDialog.style.display = "none";
-  });
-
-  const submitButton = document.createElement("button");
-  submitButton.innerText = "Submit";
-  submitButton.addEventListener("click", (e) => {
-    e.preventDefault();
-    e.stopPropagation();
-    const seconds = parseInt(secondsInput.value, 10);
-    if (isNaN(seconds)) {
-      return;
-    }
-    let entityId = config.entity;
-    hass.callService("delayed_action", "execute", {
-      entity_id: entityId,
-      delay: seconds,
-      action: "turn_on",
-    });
-    timerDialog.style.display = "none";
-  });
-
-  secondsInput.addEventListener("click", (e) => {
-    e.stopPropagation();
-    e.preventDefault();
-  });
-  timerDialog.appendChild(secondsInput);
-  timerDialog.appendChild(cancelButton);
-  timerDialog.appendChild(submitButton);
-
-  cornerButton.addEventListener("click", (e) => {
-    e.preventDefault();
-    e.stopPropagation();
-    //timerDialog.style.display = "block";
-    openDialog(hass, config.entity);
-  });
-
-  cornerButton.addEventListener("mousedown", (e) => {
-    e.preventDefault();
-    e.stopPropagation();
-  });
-  cornerButton.addEventListener("mouseup", (e) => {
-    e.preventDefault();
-    e.stopPropagation();
-  });
-
-  element.style.position = "relative";
-  element.appendChild(cornerButton);
-  element.appendChild(timerDialog);
-  const style = document.createElement("style");
-  style.textContent = `
-        .blink {
-          animation: blink-animation 1s infinite;
-        }
-        @keyframes blink-animation {
-          0%, 100% {
-            opacity: 1;
-          }
-          50% {
-            opacity: 0;
-          }
-        }
-      `;
-  element.appendChild(style);
-}
-
-function startsWithAny(entity, array) {
-  return array.some((prefix) => entity.startsWith(prefix));
-}
-
-function findAndExtendCards(element, hass, tasks, entityId) {
-  if (element.shadowRoot) {
-    let cardElements = [];
-    const homeAssistant = document.querySelector("home-assistant");
-    if (homeAssistant.delayedActionConfig) {
-      switch (element.tagName) {
-        case "HUI-ENTITIES-CARD":
-          cardElements = element.shadowRoot.querySelectorAll("ha-card");
-          cardElements.forEach((card) => {
-            // EntityCard
-            if (card.getAttribute("extended") !== "true") {
-              let elem = card.querySelectorAll("#states hui-toggle-entity-row, #states hui-cover-entity-row");
-              if (elem.length > 0) {
-                elem.forEach((e) => {
-                  let rowElement = e.shadowRoot.querySelector(
-                    "hui-generic-entity-row, hui-toggle-entity-row"
-                  );
-                  if (
-                    rowElement.__config.hasOwnProperty("entity") && rowElement.__config.entity !== undefined &&
-                    startsWithAny(
-                      rowElement.__config.entity,
-                      homeAssistant.delayedActionConfig.domains
-                    )
-                  ) {
-                    extendCard(
-                      rowElement,
-                      hass,
-                      {
-                        entity: rowElement.__config.entity,
-                      },
-                      tasks,
-                      entityId
-                    );
-                    e.setAttribute("extended", "true");
-                  }
-                });
-              }
-              elem = card.querySelectorAll("#states hui-toggle-entity-row, #states hui-cover-entity-row");
-              if (elem.length > 0) {
-                elem.forEach((e) => {
-                  let rowElement = e.shadowRoot.querySelector(
-                    "hui-generic-entity-row, hui-select-entity-row"
-                  );
-                  if (
-                    rowElement.__config.hasOwnProperty("entity") && rowElement.__config.entity !== undefined &&
-                    startsWithAny(
-                      rowElement.__config.entity,
-                      homeAssistant.delayedActionConfig.domains
-                    )
-                  ) {
-                    extendCard(
-                      rowElement,
-                      hass,
-                      {
-                        entity: rowElement.__config.entity,
-                      },
-                      tasks,
-                      entityId
-                    );
-                    e.setAttribute("extended", "true");
-                  }
-                });
-              }
-            }
-          });
-          break;
-        case "HUI-BUTTON-CARD":
-          // ButtonCard
-          if (
-            element.___config.hasOwnProperty("entity") && element.___config.entity !== undefined &&
-            startsWithAny(
-              element.___config.entity,
-              homeAssistant.delayedActionConfig.domains
-            )
-          ) {
-            extendButtonCard(
-              element,
-              hass,
-              {
-                entity: element ? element.___config.entity : null,
-              },
-              tasks,
-              entityId
-            );
-            element.setAttribute("extended", "true");
-            element.shadowRoot.querySelector("ha-card").style.overflow =
-              "visible";
-          }
-          break;
-        case "HUI-COVER-CARD":
-        case "HUI-LIGHT-CARD":
-        case "HUI-TILE-CARD":
-          if (
-            element.___config.hasOwnProperty("entity") && element.___config.entity !== undefined &&
-            startsWithAny(
-              element.___config.entity,
-              homeAssistant.delayedActionConfig.domains
-            )
-          ) {
-            extendTileCard(
-              element,
-              hass,
-              {
-                entity: element ? element.___config.entity : null,
-              },
-              tasks,
-              entityId
-            );
-            element.setAttribute("extended", "true");
-            element.shadowRoot.querySelector("ha-card").style.overflow =
-              "visible";
-          }
-          break;
-        case "MUSHROOM-LIGHT-CARD":
-        case "MUSHROOM-FAN-CARD":
-        case "MUSHROOM-COVER-CARD":
-        case "MUSHROOM-THERMOSTAT-CARD":
-        case "MUSHROOM-LOCK-CARD":
-        case "MUSHROOM-VACUUM-CARD":
-        case "MUSHROOM-ENTITY-CARD":
-        case "MUSHROOM-SELECT-CARD":
-          if (
-            element.___config.hasOwnProperty("entity") && element.___config.entity !== undefined &&
-            startsWithAny(
-              element.___config.entity,
-              homeAssistant.delayedActionConfig.domains
-            )
-          ) {
-            extendMushroomCard(
-              element,
-              hass,
-              {
-                entity: element ? element.___config.entity : null,
-              },
-              tasks,
-              entityId
-            );
-            element.setAttribute("extended", "true");
-          }
-          break;
-        case "MUSHROOM-TEMPLATE-BADGE":
-        case "HUI-ENTITY-BADGE":
-          if (
-            element.___config.hasOwnProperty("entity") && element.___config.entity !== undefined &&
-            startsWithAny(
-              element.___config.entity,
-              homeAssistant.delayedActionConfig.domains
-            )
-          ) {
-            const targetElement = element.shadowRoot.children[0];
-            extendBadge(
-              targetElement,
-              hass,
-              {
-                entity: element ? element.___config.entity : null,
-              },
-              tasks,
-              entityId
-            );
-            element.setAttribute("extended", "true");
-          }
-          break;
-        default:
-          break;
-      }
-    }
-
-    // Rekursive Suche in Schatten-DOMs
-    const childElements = element.shadowRoot.querySelectorAll(
-      enabledCards.join(",")
-    );
-    childElements.forEach((child) =>
-      findAndExtendCards(child, hass, tasks, entityId)
-    );
-  }
-}
-
-async function applyCardModifications(hass) {
-  const cards = deepQuerySelectorAll(enabledCards.join(","));
-  cards.forEach((element) => {
-    findAndExtendCards(element, hass, []);
-  });
-}
-
-async function _updateContent(hass, actions) {
-  applyCardModifications(hass);
-  const cards = deepQuerySelectorAll(enabledCards.join(","));
-  cards.forEach((element) => {
-    for (const [entityId, tasks] of Object.entries(actions)) {
-      findAndExtendCards(element, hass, tasks, entityId);
-    }
-  });
-}
-
-function setupCustomExtension() {
-  const homeAssistant = document.querySelector("home-assistant");
-  if (homeAssistant) {
-    if (homeAssistant.hass) {
-      homeAssistant.hass.connection.subscribeEvents((event) => {
-        if (event.event_type === "delayed_action_get_config_response") {
-          homeAssistant.delayedActionConfig = event.data;
-        }
-      });
-      homeAssistant.hass.connection.subscribeEvents((event) => {
-        if (event.event_type === "delayed_action_list_actions_response") {
-          _updateContent(homeAssistant.hass, event.data.actions);
-        }
-      });
-      getConfig(homeAssistant.hass);
-      applyCardModifications(homeAssistant.hass);
-      fetchTasks(homeAssistant.hass);
-    } else {
-      window.setTimeout(setupCustomExtension, 500);
-    }
-  }
-}
-
-function getEntityActions(entityId) {
-  let result = [];
-  let titles = {
-    turn_on: "Turn On",
-    turn_off: "Turn Off",
-    toggle: "Toggle",
-    play_media: "Play Media",
-    media_pause: "Pause",
-    media_play: "Play",
-    media_stop: "Stop",
-    media_next_track: "Next Track",
-    media_previous_track: "Previous Track",
-    volume_mute: "Mute",
-    volume_down: "Volume Down",
-    volume_up: "Volume Up",
-    open_cover: "Open",
-    close_cover: "Close",
-    stop_cover: "Stop",
-    start: "Start",
-    pause: "Pause",
-    stop: "Stop",
-    return_to_base: "Return to Base",
-    locate: "Locate",
-    lock: "Lock",
-    unlock: "Unlock",
-    open: "Open",
-    trigger: "Trigger",
-    dock: "Dock",
-    start_mowing: "Start Mowing",
-    select_option: "Select Option",
-  };
-
-  switch (entityId.split(".")[0]) {
-    case "light":
-    case "switch":
-    case "input_boolean":
-    case "script":
-    case "fan":
-    case "climate":
-    case "siren":
-    case "water_heater":
-      result = ["turn_on", "turn_off", "toggle"];
-      break;
-    case "media_player":
-      result = [
-        "turn_on",
-        "turn_off",
-        "play_media",
-        "media_pause",
-        "media_play",
-        "media_stop",
-        "media_next_track",
-        "media_previous_track",
-        "volume_mute",
-        "volume_down",
-        "volume_up",
-      ];
-      break;
-    case "cover":
-      result = ["open_cover", "close_cover", "stop_cover"];
-      break;
-    case "vacuum":
-      result = ["start", "pause", "stop", "return_to_base", "locate"];
-      break;
-    case "lock":
-      result = ["lock", "unlock", "open"];
-      break;
-    case "scene":
-      result = ["turn_on"];
-      break;
-    case "automation":
-      result = ["turn_on", "turn_off", "trigger"];
-      break;
-    case "lawn_mower":
-      result = ["dock", "pause", "start_mowing"];
-      break;
-    case "select":
-    case "input_select":
-        result = ["select_option"];
-      break;
-    default:
-      break;
-  }
-  return result
-    .map((action) => `<option value="${action}">${titles[action]}</option>`)
-    .join("");
-}
-
-function openDialog(hass, entityId) {
-  const dialog = document.createElement("ha-dialog");
-  dialog.open = true;
-
-  const dialogHeader = document.createElement("div");
-  dialogHeader.style.display = "flex";
-  dialogHeader.style.gap = "12px";
-  dialogHeader.style.alignItems = "start";
-  dialogHeader.innerHTML = `
-      <ha-icon-button id="closeButton" style="background: none; border: none; font-size: 36px; cursor: pointer;">&times;</ha-icon-button>
-      <p style="margin: 9px 0 0 0" title='Delayed Action'>Delayed Action</p>
-    `;
-  dialog.heading = dialogHeader;
-
-  const content = document.createElement("div");
-
-  let selectOptions = entityId.indexOf("select.") > -1 ? `<label for="delayOption">Option</label><select id="delayOption">` + hass.states[entityId].attributes.options.map((option) => `<option value="${option}">${option}</option>`).join("") + `</select>` : ``;
-
-  content.innerHTML =
-    `
-        <style>
-          .custom-dialog-content {
-            padding: 0px;
-            display: flex;
-            flex-direction: column;
-            gap: 16px;
-            max-width: 500px;
-            box-sizing: border-box;
-          }
-          .custom-dialog-content select, .custom-dialog-content input[type="datetime-local"] {
-              padding: 8px;
-              font-size: 1.2em;
-              border: none;
-              outline: none;
-              border-radius: 4px;
-              width: 100%;
-          }
-          .custom-dialog-header {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-          }
-          .custom-dialog-subheader {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-bottom: 16px;
-          }
-          .custom-dialog-header h2 {
-            margin: 0;
-          }
-          .custom-dialog-subheader h4 {
-            margin: 0;
-          }
-          .custom-dialog-content label {
-            font-weight: bold;
-          }
-          .time-input {
-            display: flex;
-            align-items: center;
-            gap: 8px;
-          }
-          .time-input input[type="number"] {
-            width: 50px;
-            padding: 8px;
-            text-align: center;
-            font-size: 1.2em;
-            border: none;
-            outline: none;
-          }
-          .time-input input[type="number"]::-webkit-outer-spin-button,
-          .time-input input[type="number"]::-webkit-inner-spin-button {
-            -webkit-appearance: none;
-            margin: 0;
-          }
-          .time-input input[type="number"] {
-            -moz-appearance: textfield;
-          }
-          .time-input .time-control {
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            width: 30%;
-            touch-action: manipulation;
-          }
-          .time-input .time-control button {
-            background: none;
-            border: none;
-            cursor: pointer;
-            font-size: 1.2em;
-            color: var(--primary-color);
-            --mdc-icon-size: 64px;
-          }
-          .custom-dialog-actions {
-            display: flex;
-            justify-content: flex-end;
-            gap: 8px;
-          }
-          .custom-dialog-actions button {
-            padding: 8px 16px;
-            background-color: var(--primary-color);
-            color: white;
-            border: none;
-            border-radius: 4px;
-            cursor: pointer;
-            width: 100%;
-          }
-          #delayDate {
-            width: 100%;
-          }
-        </style>
-        <div class="custom-dialog-content">
-          <label for="delayAction">Action</label>
-          <select id="delayAction">` + getEntityActions(entityId) + `</select>` + selectOptions + `
-          <label for="delayTime">Delay for</label>
-          <div id="delayTime" class="time-input">
-            <div class="time-control">
-              Hours<button id="increaseHours"><ha-icon icon="mdi:chevron-up"></ha-icon></button>
-              <input id="delayHours" type="number" min="0" max="23" placeholder="HH" value="0">
-              <button id="decreaseHours"><ha-icon icon="mdi:chevron-down"></ha-icon></button>
-            </div>
-            <span></span>
-            <div class="time-control">
-              Minutes<button id="increaseMinutes"><ha-icon icon="mdi:chevron-up"></ha-icon></button>
-              <input id="delayMinutes" type="number" min="0" max="59" placeholder="MM" value="0">
-              <button id="decreaseMinutes"><ha-icon icon="mdi:chevron-down"></ha-icon></button>
-            </div>
-            <span></span>
-            <div class="time-control">
-              Seconds<button id="increaseSeconds"><ha-icon icon="mdi:chevron-up"></ha-icon></button>
-              <input id="delaySeconds" type="number" min="0" max="59" placeholder="SS" value="0">
-              <button id="decreaseSeconds"><ha-icon icon="mdi:chevron-down"></ha-icon></button>
-            </div>
-          </div>
-          <label for="delayDate">or start at</label>
-          <input id="delayDate" type="datetime-local">
-          <p style="font-size: 0.8em; color: var(--error-color); display:none" id="error"></p>
-        </div>
-      `;
-  const primaryButton = document.createElement("mwc-button");
-  primaryButton.setAttribute("slot", "primaryAction");
-  primaryButton.id = "submitButton";
-  primaryButton.innerText = "Submit";
-  primaryButton.addEventListener("click", () => {
-    const hours = parseInt(delayHours.value, 10) || 0;
-    const minutes = parseInt(delayMinutes.value, 10) || 0;
-    const seconds = parseInt(delaySeconds.value, 10) || 0;
-    const date = delayDate.value;
-    const action = content.querySelector("#delayAction").value || "turn_on";
-    const select = content.querySelector("#delayOption");
-
-    if (hours === 0 && minutes === 0 && seconds === 0 && !date) {
-      content.querySelector("#error").innerText =
-        "Please enter a delay time or a start date.";
-      content.querySelector("#error").style.display = "block";
-      return;
-    }
-
-    const delay = hours * 3600 + minutes * 60 + seconds;
-
-    let config = {
-      entity_id: entityId,
-      action: action
-    };
-
-    if(select != null || select != undefined) {
-      config.data.option = select.value;
-    }
-
-    if (date) {
-      config.datetime = date;
-    } else {
-      config.delay = delay;
-    }
-    hass.callService("delayed_action", "execute", config);
-
-    closeDialog();
-  });
-
-  function closeDialog() {
-    document
-      .querySelector("home-assistant")
-      .shadowRoot.querySelector("ha-dialog")
-      .remove();
-  }
-
-  const secondaryButton = document.createElement("mwc-button");
-  secondaryButton.setAttribute("slot", "secondaryAction");
-  secondaryButton.id = "submitButton";
-  secondaryButton.innerText = "Cancel";
-  secondaryButton.addEventListener("click", closeDialog);
-
-  dialog.appendChild(content);
-  dialog.appendChild(secondaryButton);
-  dialog.appendChild(primaryButton);
-  document.querySelector("home-assistant").shadowRoot.appendChild(dialog);
-
-  const delayHours = content.querySelector("#delayHours");
-  const delayMinutes = content.querySelector("#delayMinutes");
-  const delaySeconds = content.querySelector("#delaySeconds");
-  const delayDate = content.querySelector("#delayDate");
-  const increaseHours = content.querySelector("#increaseHours");
-  const decreaseHours = content.querySelector("#decreaseHours");
-  const increaseMinutes = content.querySelector("#increaseMinutes");
-  const decreaseMinutes = content.querySelector("#decreaseMinutes");
-  const increaseSeconds = content.querySelector("#increaseSeconds");
-  const decreaseSeconds = content.querySelector("#decreaseSeconds");
-
-  const closeButton = dialog.heading.querySelector("#closeButton");
-  closeButton.addEventListener("click", closeDialog);
-
-  const incrementValue = (input, max) => {
-    let value = parseInt(input.value, 10);
-    if (isNaN(value)) value = 0;
-    value = (value + 1) % (max + 1);
-    input.value = value;
-    document
-      .querySelector("home-assistant")
-      .shadowRoot.querySelector("#error").style.display = "none";
-  };
-
-  const decrementValue = (input, max) => {
-    let value = parseInt(input.value, 10);
-    if (isNaN(value)) value = 0;
-    value = (value - 1 + (max + 1)) % (max + 1);
-    input.value = value;
-    document
-      .querySelector("home-assistant")
-      .shadowRoot.querySelector("#error").style.display = "none";
-  };
-
-  increaseHours.addEventListener("click", () => incrementValue(delayHours, 23));
-  decreaseHours.addEventListener("click", () => decrementValue(delayHours, 23));
-  increaseMinutes.addEventListener("click", () =>
-    incrementValue(delayMinutes, 59)
-  );
-  decreaseMinutes.addEventListener("click", () =>
-    decrementValue(delayMinutes, 59)
-  );
-  increaseSeconds.addEventListener("click", () =>
-    incrementValue(delaySeconds, 59)
-  );
-  decreaseSeconds.addEventListener("click", () =>
-    decrementValue(delaySeconds, 59)
-  );
-}
-
-const getConfig = async (hass) => {
-  await hass.callService("delayed_action", "get_config").catch((error) => {
-    console.error("Error fetching config:", error);
-  });
+// Delayed Action 1.1.0 -- browser entry, also usable without the optional bundled selector.
+const DOMAIN = "delayed_action";
+const EVENT = "delayed_action_list_actions_response";
+const CONFIG_EVENT = "delayed_action_get_config_response";
+const DEFAULT_DOMAINS = "automation climate cover fan humidifier input_boolean input_select lawn_mower light lock media_player scene script select switch vacuum water_heater".split(" ");
+const SERVICES = {
+  light: ["turn_on","turn_off","toggle"], switch: ["turn_on","turn_off","toggle"],
+  input_boolean: ["turn_on","turn_off","toggle"], fan: ["turn_on","turn_off","toggle"],
+  humidifier: ["turn_on","turn_off","toggle"], climate: ["turn_on","turn_off","toggle"],
+  water_heater: ["turn_on","turn_off"], script: ["turn_on","turn_off","toggle"],
+  cover: ["open_cover","close_cover","stop_cover"], lock: ["lock","unlock","open"],
+  vacuum: ["start","pause","stop","return_to_base","locate"],
+  lawn_mower: ["start_mowing","pause","dock"], scene: ["turn_on"],
+  automation: ["turn_on","turn_off","trigger"], select: ["select_option"], input_select: ["select_option"],
+  media_player: ["turn_on","turn_off","media_play","media_pause","media_stop","media_next_track","media_previous_track","volume_up","volume_down","volume_mute"]
 };
-
-window.setTimeout(setupCustomExtension, 500);
-
-setInterval(() => {
-  const homeAssistant = document.querySelector("home-assistant");
-  if (homeAssistant && homeAssistant.hass) {
-    fetchTasks(homeAssistant.hass);
+const label = value => value.replace(/_/g, " ").replace(/^./, c => c.toUpperCase());
+const entityDomain = entity => entity.split(".")[0];
+function resolveEntity(node) {
+  for (const config of [node.config,node._config,node.__config,node.___config]) {
+    const entity = typeof config === "string" ? config : config?.entity;
+    if (typeof entity === "string" && /^[a-z0-9_]+\.[a-z0-9_]+$/.test(entity)) return entity;
   }
-}, 10000);
-
-class DelayedActionCard extends HTMLElement {
-  setConfig(config) {
-    this.config = config;
-    this.attachShadow({ mode: "open" });
-    this.render();
+  for (const entity of [node.entityId,node.entity,node.stateObj?.entity_id,node._stateObj?.entity_id,node.getAttribute("entity")]) {
+    if (typeof entity === "string" && /^[a-z0-9_]+\.[a-z0-9_]+$/.test(entity)) return entity;
   }
-
-  connectedCallback() {
-    if (this.isConnected) {
-      this.hass.connection.subscribeEvents((event) => {
-        if (event.event_type === "delayed_action_list_actions_response") {
-          this.tasks = event.data.actions;
-          this.render();
-        }
-      });
-    }
+  return null;
+}
+function kind(node) {
+  const tag = node.localName;
+  if (/^(hui-|mushroom-).*-badge$/.test(tag)) return "badge";
+  if (/^hui-.*-entity-row$/.test(tag) || tag === "hui-generic-entity-row") return "row";
+  if (["button-card","bubble-card","better-thermostat-ui-card"].includes(tag)) return "card";
+  if (/^(hui-|mushroom-).*-card$/.test(tag) && !/stack-card$|grid-card$|entities-card$|conditional-card$/.test(tag)) return "card";
+  return null;
+}
+function parentAcross(node) {
+  return node.parentElement || node.getRootNode()?.host || null;
+}
+function isNestedDuplicate(node, entity, type, candidates) {
+  for (let parent = parentAcross(node); parent; parent = parentAcross(parent)) {
+    const other = candidates.get(parent);
+    if (other?.entity === entity && other.type === type) return true;
   }
-
-  async cancelTask(event) {
-    const entityId = event.target.getAttribute("data-entity");
-    const taskId = event.target.getAttribute("data-task");
+  return false;
+}
+function actionsFor(hass, entity) {
+  const domain = entityDomain(entity);
+  const available = hass.services?.[domain];
+  return (SERVICES[domain] || []).filter(action => !available || Object.hasOwn(available, action));
+}
+function buildPayload(entity, action, mode, value, option) {
+  const payload = {entity_id:entity,action};
+  if (mode === "delay") {
+    if (!Number.isSafeInteger(value) || value < 0) throw Error("Enter a valid delay.");
+    payload.delay = value;
+  } else {
+    const date = new Date(value);
+    if (!Number.isFinite(date.getTime()) || date.getTime() <= Date.now()) throw Error("Choose a future date and time.");
+    payload.datetime = date.toISOString();
+  }
+  if (action === "select_option") {
+    if (typeof option !== "string" || !option.length) throw Error("Choose an option.");
+    payload.data = {option};
+  }
+  if (action === "volume_mute") payload.data = {is_volume_muted:true};
+  return payload;
+}
+function el(tag, text, attrs = {}) {
+  const node = document.createElement(tag);
+  if (text != null) node.textContent = text;
+  for (const [key,value] of Object.entries(attrs)) node.setAttribute(key,String(value));
+  return node;
+}
+class TaskStore extends EventTarget {
+  constructor() { super(); this.tasks = {}; this.domains = DEFAULT_DOMAINS; this.hass = null; this.connection = null; this.generation = 0; this.unsubs = []; this.error = ""; this.ready = false; }
+  changed() { this.dispatchEvent(new Event("change")); }
+  async bind(hass) {
+    if (!hass?.connection) return;
+    this.hass = hass;
+    if (this.connection === hass.connection) return;
+    this.disconnect();
+    this.hass = hass;
+    this.connection = hass.connection;
+    const generation = this.generation;
     try {
-      await this.hass.callService("delayed_action", "cancel", {
-        entity_id: entityId,
-        task_id: taskId,
-      });
-      this.hass.callService("delayed_action", "list"); // Refresh the task list after cancellation
-    } catch (error) {
-      console.error("Error cancelling task:", error);
-    }
-  }
-
-  getFriendlyName(entityId) {
-    const entity = this.hass.states[entityId];
-    return entity ? entity.attributes.friendly_name : entityId;
-  }
-
-  getActionIcon(action) {
-    switch (action) {
-      case "turn_on":
-        return "mdi:power";
-      case "turn_off":
-        return "mdi:power-off";
-      case "toggle":
-        return "mdi:toggle-switch";
-      default:
-        return "mdi:alert-circle-outline";
-    }
-  }
-
-  render() {
-    if (!this.hass || !this.tasks) return;
-
-    let taskList = "";
-    for (const [entityId, tasks] of Object.entries(this.tasks)) {
-      taskList += `<div class="taskentity"><h2>${this.getFriendlyName(
-        entityId
-      )}</h2>`;
-      for (const [action, task] of Object.entries(tasks)) {
-        taskList += `
-          <div class="task">
-            <ha-icon icon="${this.getActionIcon(task.action)}"></ha-icon>
-            <span>${
-              task.action == "turn_on"
-                ? "turn on"
-                : task.action == "turn_off"
-                ? "turn off"
-                : task.action == "turn_off"
-                ? "toggle"
-                : task.action
-            }</span>
-            <span>${new Date(task.due).toLocaleString()}</span>
-            <mwc-button class="warning deleteDelayedAction" outlined data-entity="${entityId}" data-task="${
-          task.task_id
-        }">Cancel</mwc-button>
-          </div>
-        `;
+      for (const [type, callback] of [
+        [EVENT, event => { this.tasks = event.data?.actions || {}; this.error = ""; this.ready = true; this.changed(); }],
+        [CONFIG_EVENT, event => { if (Array.isArray(event.data?.domains)) this.domains = event.data.domains; this.changed(); }]
+      ]) {
+        const unsubscribe = await hass.connection.subscribeEvents(event => {
+          if (generation === this.generation) callback(event);
+        }, type);
+        if (generation !== this.generation) { unsubscribe(); return; }
+        this.unsubs.push(unsubscribe);
       }
-      taskList += `</div>`;
+      await hass.callService(DOMAIN,"get_config").catch(error => this.report(error));
+      await this.refresh();
+    } catch (error) { if (generation === this.generation) { this.disconnect(); this.report(error); } }
+  }
+  disconnect() {
+    this.generation++;
+    for (const unsubscribe of this.unsubs.splice(0)) Promise.resolve().then(unsubscribe).catch(console.warn);
+    this.connection = null; this.ready = false;
+  }
+  report(error) { this.error = error?.message || String(error); this.changed(); }
+  async refresh() {
+    if (!this.hass || !this.connection) return;
+    try { await this.hass.callService(DOMAIN,"list"); } catch (error) { this.report(error); }
+  }
+  async execute(payload) { await this.hass.callService(DOMAIN,"execute",payload); await this.refresh(); }
+  async cancel(entity, task) { await this.hass.callService(DOMAIN,"cancel",{entity_id:entity,task_id:task}); await this.refresh(); }
+  pending(entity) { return Object.values(this.tasks[entity] || {}).filter(task => new Date(task.due).getTime() > Date.now()); }
+}
+const store = new TaskStore();
+const dialogCSS = `
+  dialog{color:var(--primary-text-color,#222);background:var(--card-background-color,#fff);border:0;border-radius:16px;width:min(440px,calc(100vw - 32px));max-height:85dvh;box-sizing:border-box;padding:20px;box-shadow:0 12px 40px #0005}
+  dialog::backdrop{background:#0008} h2{margin:0 0 6px;font-size:20px} p{margin:0 0 16px;color:var(--secondary-text-color,#666)}
+  form{display:grid;gap:12px} label{display:grid;gap:5px;font-weight:500} input,select,button{font:inherit;color:inherit} input,select{box-sizing:border-box;width:100%;min-width:0;padding:9px;border:1px solid var(--divider-color,#aaa);border-radius:8px;background:var(--card-background-color,#fff)}
+  .time{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}.buttons{display:flex;justify-content:flex-end;gap:8px}button{cursor:pointer;border:0;border-radius:8px;padding:10px 16px;background:var(--secondary-background-color,#eee)}button[type=submit]{background:var(--primary-color,#03a9f4);color:var(--text-primary-color,#fff)}button:disabled{opacity:.5}.error{color:var(--error-color,#db4437)}[hidden]{display:none!important}
+`;
+let activeDialog = null;
+function openDialog(entity) {
+  const hass = store.hass;
+  if (!hass?.states?.[entity]) return;
+  if (activeDialog) activeDialog.close();
+  const wrapper = el("div");
+  const root = wrapper.attachShadow({mode:"open"});
+  root.append(el("style",dialogCSS));
+  const dialog = el("dialog");
+  activeDialog = dialog;
+  root.append(dialog);
+  const form = el("form");
+  dialog.append(el("h2","Delayed Action"),el("p",hass.states[entity].attributes.friendly_name || entity),form);
+  const field = (title,node) => { const l=el("label",title); l.append(node); return l; };
+  const action = el("select",null,{required:""});
+  for (const item of actionsFor(hass,entity)) action.append(el("option",label(item),{value:item}));
+  const option = el("select");
+  for (const item of hass.states[entity].attributes.options || []) option.append(el("option",item,{value:item}));
+  const optionField = field("Option",option);
+  const mode = el("select");
+  mode.append(el("option","Delay",{value:"delay"}),el("option","At a specific time",{value:"datetime"}));
+  const time = el("div",null,{class:"time"});
+  const inputs = ["Hours","Minutes","Seconds"].map((name,i) => {
+    const input = el("input",null,{type:"number",min:0,step:1,value:i===1?5:0,inputmode:"numeric"});
+    if (i) input.max = "59";
+    time.append(field(name,input)); return input;
+  });
+  const date = el("input",null,{type:"datetime-local"});
+  const dateField = field("Date and time",date);
+  const error = el("div",null,{class:"error",role:"alert"});
+  const buttons = el("div",null,{class:"buttons"});
+  const cancel = el("button","Cancel",{type:"button"});
+  const submit = el("button","Schedule",{type:"submit"});
+  buttons.append(cancel,submit);
+  form.append(field("Action",action),optionField,field("Schedule",mode),time,dateField,error,buttons);
+  function update() {
+    optionField.hidden = action.value !== "select_option";
+    time.hidden = mode.value !== "delay"; dateField.hidden = !time.hidden;
+    date.required = !dateField.hidden;
+    for (const input of inputs) input.disabled = time.hidden;
+    option.disabled = optionField.hidden; option.required = !optionField.hidden;
+    submit.disabled = !action.value;
+  }
+  action.addEventListener("change",update); mode.addEventListener("change",update); update();
+  cancel.addEventListener("click",()=>dialog.close());
+  dialog.addEventListener("close",()=>{wrapper.remove(); if(activeDialog===dialog) activeDialog=null;},{once:true});
+  form.addEventListener("submit",async event=>{
+    event.preventDefault(); error.textContent=""; submit.disabled=true;
+    try {
+      const values=inputs.map(input=>Number(input.value));
+      const delay=values[0]*3600+values[1]*60+values[2];
+      await store.execute(buildPayload(entity,action.value,mode.value,mode.value==="delay"?delay:date.value,option.value));
+      dialog.close();
+    } catch (err) {error.textContent=err?.message || String(err); submit.disabled=false;}
+  });
+  (document.querySelector("home-assistant")?.shadowRoot || document.body).append(wrapper);
+  dialog.showModal();
+}
+const indicatorCSS = `
+  :host{position:fixed;inset:0;pointer-events:none;z-index:5;display:block}
+  button{position:absolute;pointer-events:auto;box-sizing:border-box;width:22px;height:22px;display:grid;place-items:center;padding:0;border:1px solid var(--ha-card-border-color,var(--divider-color,#ddd));border-radius:50%;background:var(--ha-card-background,var(--card-background-color,#fff));cursor:pointer;touch-action:manipulation;transform:translate(-50%,-50%);}
+  button[data-kind=badge]{width:14px;height:14px}
+  span{width:10px;height:10px;border-radius:50%;background:var(--disabled-text-color,#888)}
+  button[data-kind=badge] span{width:6px;height:6px}
+  button.active span{background:var(--accent-color,#03a9f4);animation:pulse 1s infinite}
+  button:focus-visible{outline:2px solid var(--primary-color,#03a9f4)}
+  @keyframes pulse{50%{opacity:.2}} @media(prefers-reduced-motion:reduce){button.active span{animation:none}}
+  button[hidden]{display:none}
+`;
+class CardDiscovery {
+  constructor() {
+    this.root=null; this.records=new Map(); this.observed=new Set(); this.visible=new Map();
+    this.scanFrame=0; this.layoutFrame=0; this.layer=null;
+    this.mutations=new MutationObserver(()=>this.scheduleScan());
+    this.resize=new ResizeObserver(()=>this.scheduleLayout());
+    this.intersection=new IntersectionObserver(entries=>{for(const entry of entries)this.visible.set(entry.target,entry.isIntersecting);this.scheduleLayout();});
+    this.onChange=()=>this.scheduleScan();
+    store.addEventListener("change",this.onChange);
+    window.addEventListener("resize",()=>this.scheduleLayout(),{passive:true});
+    window.addEventListener("scroll",()=>this.scheduleLayout(),{passive:true,capture:true});
+    this.tick=setInterval(()=>{this.scheduleScan();this.updateIndicators();},2000);
+  }
+  setRoot(root) {
+    if(this.root===root)return;
+    this.root=root; this.mutations.disconnect(); this.observed.clear();
+    for(const node of this.records.keys())this.remove(node);
+    this.scheduleScan();
+  }
+  scheduleScan(){if(!this.scanFrame)this.scanFrame=requestAnimationFrame(()=>{this.scanFrame=0;this.scan();});}
+  scheduleLayout(){if(!this.layoutFrame)this.layoutFrame=requestAnimationFrame(()=>{this.layoutFrame=0;this.layout();});}
+  ensureLayer(){
+    const parent=document.querySelector("home-assistant")?.shadowRoot || document.body;
+    if(this.layer?.isConnected)return;
+    this.layer=el("div",null,{"data-delayed-action-layer":""});
+    const root=this.layer.attachShadow({mode:"open"});root.append(el("style",indicatorCSS));parent.append(this.layer);
+  }
+  scan(){
+    if(!this.root?.isConnected)return;
+    this.ensureLayer();
+    const candidates=new Map();const roots=new Set();
+    const walk=node=>{
+      if(node===this.layer || node.localName==="delayed-action-card")return;
+      if(node.nodeType===1){
+        const type=kind(node);const entity=type?resolveEntity(node):null;
+        if(entity && store.hass?.states?.[entity] && store.domains.includes(entityDomain(entity)) && actionsFor(store.hass,entity).length)candidates.set(node,{entity,type});
+      }
+      if(node.shadowRoot){roots.add(node.shadowRoot);walk(node.shadowRoot);}
+      for(const child of node.children || [])walk(child);
+    };
+    roots.add(this.root);walk(this.root);
+    if([...this.observed].some(root=>!roots.has(root))){this.mutations.disconnect();this.observed.clear();}
+    for(const root of roots)if(!this.observed.has(root)){
+      this.mutations.observe(root,{childList:true,subtree:true});this.observed.add(root);
     }
-
-    this.shadowRoot.innerHTML = `
-    <style>
-        mwc-button.warning {
-          --mdc-theme-primary: var(--error-color);
-          margin-bottom: 4px;
-        }
-        .tasks {
-          padding: 16px;
-        }
-        .taskentity {
-            margin-bottom: 16px;
-        }
-        .task {
-          display: flex;
-          align-items: center;
-          justify-content: space-between;
-        }
-        .cancel-button {
-          color: var(--error-state-color);
-        }
-        ha-icon {
-          padding-right: 8px;
-        }
-      </style>
-      <ha-card header="Delayed Actions">
-        <div class="tasks">
-          ${taskList}
-        </div>
-      </ha-card>
-    `;
-    this.shadowRoot
-      .querySelectorAll(".deleteDelayedAction")
-      .forEach((button) => {
-        button.addEventListener("click", this.cancelTask.bind(this));
-      });
+    for(const [node,record] of this.records){
+      const candidate=candidates.get(node);
+      if(!candidate || candidate.entity!==record.entity || isNestedDuplicate(node,candidate.entity,candidate.type,candidates))this.remove(node);
+    }
+    for(const [node,candidate] of candidates){
+      if(this.records.has(node)||isNestedDuplicate(node,candidate.entity,candidate.type,candidates))continue;
+      const button=el("button",null,{type:"button","data-kind":candidate.type});
+      button.append(el("span"));button.hidden=true;
+      button.addEventListener("click",event=>{event.preventDefault();event.stopPropagation();openDialog(candidate.entity);});
+      this.layer.shadowRoot.append(button);this.records.set(node,{...candidate,button});
+      this.resize.observe(node);this.intersection.observe(node);
+    }
+    this.updateIndicators();this.scheduleLayout();
   }
-
-  set hass(hass) {
-    this._hass = hass;
+  updateIndicators(){
+    for(const {entity,button} of this.records.values()){
+      const pending=store.pending(entity);button.classList.toggle("active",pending.length>0);
+      const text="Delayed Action: "+entity+(pending.length?" ("+pending.length+" pending)":"");
+      button.title=text;button.setAttribute("aria-label",text);
+    }
   }
-
-  get hass() {
-    return this._hass;
+  remove(node){
+    this.records.get(node)?.button.remove();this.records.delete(node);
+    this.resize.unobserve(node);this.intersection.unobserve(node);this.visible.delete(node);
+  }
+  layout(){
+    for(const [node,{button,type}] of this.records){
+      const r=node.getBoundingClientRect();
+      const x=type==="badge"?r.left+r.width/2:r.right-2;
+      const y=type==="badge"?r.bottom-2:r.top+r.height/2;
+      const show=node.isConnected && this.visible.get(node)!==false && r.width>0 && r.height>0 && x>=0 && y>=0 && x<=window.innerWidth && y<=window.innerHeight;
+      button.hidden=!show;
+      if(show){button.style.left=x+"px";button.style.top=y+"px";}
+    }
   }
 }
-
-customElements.define("delayed-action-card", DelayedActionCard);
-
-window.customCards = window.customCards || [];
-window.customCards.push({
-  type: "delayed-action-card",
-  name: "Delayed Action Card",
-  description: "Shows and manages delayed actions",
-  preview: true,
-  documentationURL: "https://github.com/bhuebschen/delayed-action-card",
-});
-
-console.info(
-  "%c  DELAYED-ACTION-CARD  \n%c  Version: 1.0.4       ",
-  "background: #c0c0c0; color: black; font-weight: bold; padding: 5px 0;",
-  "color: white; background: #333; font-weight: bold; padding: 5px 0;"
-);
+const cardCSS=`
+  .body{padding:16px;display:grid;gap:12px}.group{display:grid;gap:6px}h3{margin:0;font-size:15px}.task{display:grid;grid-template-columns:1fr auto;align-items:center;gap:8px}.detail{display:grid;gap:3px;font-size:14px}.due{color:var(--secondary-text-color)}button{font:inherit;color:var(--error-color,#db4437);background:none;border:1px solid currentColor;border-radius:8px;padding:6px 10px;cursor:pointer}.error{color:var(--error-color,#db4437)}
+`;
+class DelayedActionCard extends HTMLElement {
+  constructor(){super();this.attachShadow({mode:"open"});this.onChange=()=>this.render();}
+  setConfig(config){this.config=config;this.render();}
+  set hass(hass){this._hass=hass;void store.bind(hass);this.render();}
+  get hass(){return this._hass;}
+  getCardSize(){return Math.max(1,Object.keys(store.tasks).length);}
+  connectedCallback(){store.addEventListener("change",this.onChange);this.render();}
+  disconnectedCallback(){store.removeEventListener("change",this.onChange);}
+  render(){
+    if(!this.shadowRoot)return;
+    const card=el("ha-card",null,{header:this.config?.title||"Delayed Actions"});
+    const body=el("div",null,{class:"body"});card.append(body);
+    if(store.error)body.append(el("div",store.error,{class:"error",role:"alert"}));
+    const groups=Object.entries(store.tasks).filter(([,tasks])=>Object.keys(tasks).length);
+    if(!groups.length)body.append(el("div",store.ready?"No scheduled actions":"Loading scheduled actions…"));
+    for(const [entity,tasks] of groups){
+      const group=el("section",null,{class:"group"});
+      group.append(el("h3",this.hass?.states?.[entity]?.attributes?.friendly_name||entity));
+      for(const task of Object.values(tasks).sort((a,b)=>new Date(a.due)-new Date(b.due))){
+        const row=el("div",null,{class:"task"});const detail=el("div",null,{class:"detail"});
+        detail.append(el("span",label(task.action)),el("span",new Date(task.due).toLocaleString(),{class:"due"}));
+        const cancel=el("button","Cancel",{type:"button"});
+        cancel.addEventListener("click",async()=>{cancel.disabled=true;try{await store.cancel(entity,task.task_id);}catch(err){store.report(err);cancel.disabled=false;}});
+        row.append(detail,cancel);group.append(row);
+      }
+      body.append(group);
+    }
+    this.shadowRoot.replaceChildren(el("style",cardCSS),card);
+  }
+}
+function findView(root){
+  if(!root)return null;
+  if(root.localName==="hui-view")return root;
+  for(const child of root.children||[]){const result=findView(child);if(result)return result;}
+  return root.shadowRoot?findView(root.shadowRoot):null;
+}
+function start(Selector){
+  if(window.__delayedActionFrontend)return;
+  window.__delayedActionFrontend=true;
+  const discovery=new CardDiscovery();
+  let selectorView=null;
+  if(Selector){
+    const instance=new Selector();
+    instance.addEventListener("onLovelacePanelLoad",async({detail})=>{
+      const view=await detail.HUI_VIEW.element;
+      if(view?.isConnected){selectorView=view;discovery.setRoot(view);}
+    });
+    instance.addEventListener("onPanelLoad",()=>{selectorView=null;});
+    instance.listen();
+  }
+  function connect(){
+    const home=document.querySelector("home-assistant");
+    if(!home)return;
+    if(home.hass)void store.bind(home.hass);
+    const view=selectorView?.isConnected?selectorView:findView(home);
+    discovery.setRoot(view);
+  }
+  connect();setInterval(connect,1000);setInterval(()=>void store.refresh(),10000);
+  window.addEventListener("location-changed",()=>requestAnimationFrame(connect));
+}
+if(!customElements.get("delayed-action-card"))customElements.define("delayed-action-card",DelayedActionCard);
+window.customCards=window.customCards||[];
+if(!window.customCards.some(card=>card.type==="delayed-action-card"))window.customCards.push({type:"delayed-action-card",name:"Delayed Action Card",description:"Shows and manages delayed actions",preview:true,documentationURL:"https://github.com/BRUNOsys-UG/delayed-action-card"});
+start();

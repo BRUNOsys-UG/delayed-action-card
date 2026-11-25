@@ -1,0 +1,11 @@
+import test from "node:test";
+import assert from "node:assert/strict";
+globalThis.HTMLElement=class{};
+globalThis.customElements={get:()=>true};
+globalThis.window={customCards:[]};
+const {resolveEntity,kind,buildPayload,actionsFor,TaskStore}=await import("../src/core.js");
+test("entity discovery supports HA and Mushroom configurations",()=>{for(const key of ["config","_config","__config","___config"])assert.equal(resolveEntity({[key]:{entity:"light.test"},getAttribute:()=>null}),"light.test");});
+test("supported card hosts",()=>{for(const tag of ["hui-tile-card","hui-button-card","mushroom-light-card","mushroom-template-card","bubble-card"])assert.equal(kind({localName:tag}),"card");assert.equal(kind({localName:"hui-generic-entity-row"}),"row");assert.equal(kind({localName:"hui-entity-badge"}),"badge");assert.equal(kind({localName:"hui-grid-card"}),null);});
+test("backend payload uses data and UTC",()=>{assert.deepEqual(buildPayload("select.test","select_option","delay",0,"A"),{entity_id:"select.test",action:"select_option",delay:0,data:{option:"A"}});assert.equal(buildPayload("light.test","turn_off","datetime","2099-01-01T10:00:00+01:00").datetime,"2099-01-01T09:00:00.000Z");assert.throws(()=>buildPayload("light.test","turn_off","delay",-1));});
+test("only registered services offered",()=>assert.deepEqual(actionsFor({services:{light:{turn_off:{}}}},"light.test"),["turn_off"]));
+test("task state isolated per entity",()=>{const s=new TaskStore();s.tasks={"light.a":{a:{due:"2099-01-01T00:00:00Z"}},"light.b":{b:{due:"2000-01-01T00:00:00Z"}}};assert.equal(s.pending("light.a").length,1);assert.equal(s.pending("light.b").length,0);});

@@ -5,11 +5,11 @@ The `Delayed Action Card` is a custom Home Assistant card that displays and mana
 [![hacs][hacs-image]][hacs-url]
 [![GitHub Sponsors][gh-sponsors-image]][gh-sponsors-url]
 
-https://github.com/bhuebschen/delayed-action-card/assets/1864448/29967331-d993-42a2-a391-d9b04fb37d50
+https://github.com/BRUNOsys-UG/delayed-action-card/assets/1864448/29967331-d993-42a2-a391-d9b04fb37d50
 
 ### Requirements
 
-- Ensure the "Delayed Action" custom integration is installed. You can find it at: https://github.com/bhuebschen/delayed_action
+- Ensure the "Delayed Action" custom integration is installed. You can find it at: https://github.com/BRUNOsys-UG/delayed_action
 
 ### Features
 
@@ -23,7 +23,7 @@ https://github.com/bhuebschen/delayed-action-card/assets/1864448/29967331-d993-4
 ### [HACS](hacs) (Home Assistant Community Store)
 
 1. Go to HACS page on your Home Assistant instance
-1. Add this repository (https://github.com/bhuebschen/delayed-action-card) via HACS Custom repositories [How to add Custom Repositories](https://hacs.xyz/docs/faq/custom_repositories/)
+1. Add this repository (https://github.com/BRUNOsys-UG/delayed-action-card) via HACS Custom repositories [How to add Custom Repositories](https://hacs.xyz/docs/faq/custom_repositories/)
 1. Select `Frontend`
 1. Press add icon and search for `Delayed Action Card`
 1. Select `Delayed Action Card` repo and install
@@ -61,7 +61,7 @@ frontend:
 2. Each menu item performs a predefined action, such as controlling devices or navigating to other dashboards.
 
 ### Issues & Contributions:
-If you encounter any issues or have suggestions for improvements, feel free to [open an issue](https://github.com/bhuebschen/delayed-action-card/issues) or submit a pull request.
+If you encounter any issues or have suggestions for improvements, feel free to [open an issue](https://github.com/BRUNOsys-UG/delayed-action-card/issues) or submit a pull request.
 
 ## License
 
@@ -76,9 +76,13 @@ MIT © [Benedikt Hübschen][bhuebschen]
 
 <!-- References -->
 
-[preview]: https://github.com/bhuebschen/delayed-action-card/assets/1864448/29967331-d993-42a2-a391-d9b04fb37d50
+[preview]: https://github.com/BRUNOsys-UG/delayed-action-card/assets/1864448/29967331-d993-42a2-a391-d9b04fb37d50
 [home-assistant]: https://www.home-assistant.io/
 [hacs]: https://hacs.xyz
-[latest-release]: https://github.com/bhuebschen/delayed-action-card/releases/latest
+[latest-release]: https://github.com/BRUNOsys-UG/delayed-action-card/releases/latest
 [ha-scripts]: https://www.home-assistant.io/docs/scripts/
-[edit-readme]: https://github.com/bhuebschen/delayed-action-card/edit/master/README.md
+[edit-readme]: https://github.com/BRUNOsys-UG/delayed-action-card/edit/master/README.md
+
+## Development branch: HA compatibility
+
+The global extension discovers native cards, Mushroom cards, entity rows and badges and positions a separate indicator without modifying card internals. A shared task store consumes the existing delayed_action events. The standalone task list remains available. The selector library is integrated in the production bundle: run `npm install`, `npm test`, `npm run build`. The checked-in browser entry also works using the built-in view discovery fallback; CI uploads the bundle containing the library. Actual card compatibility depends on exposed entity configuration and open shadow roots. The backend branch `refactor/persistent-scheduler` uses the same services and event schema.
